@@ -1,0 +1,22 @@
+task wrapper(type:Wrapper) {
+   gradleVersion = '1.6'
+}
+import com.amazonaws.*;
+import com.amazonaws.auth.*;
+import com.amazonaws.services.ec2.*;
+import com.amazonaws.services.ec2.model.*;
+
+buildscript {
+   repositories { mavenCentral() }
+   dependencies { classpath 'com.amazonaws:aws-java-sdk:1.4.4.1' }
+}
+
+def credentials = new PropertiesCredentials(
+                        new File(System.properties['user.home'],
+                                 '.aws/AwsCredentials.properties'))
+
+def ec2 = new AmazonEC2Client(credentials)
+if (hasProperty('region')) ec2.endpoint = "https'ec2.${region}.amazonaws.com"
+
+//KeyPair作成
+//
