@@ -1,22 +1,123 @@
-task wrapper(type:Wrapper) {
-   gradleVersion = '1.6'
+
+buildscript {
+    repositories { mavenCentral() }
+    dependencies { classpath 'com.amazonaws:aws-java-sdk:1.4.7' }
 }
+
+task wrapper(type:Wrapper) {
+    gradleVersion = '1.6'
+}
+
 import com.amazonaws.*;
 import com.amazonaws.auth.*;
 import com.amazonaws.services.ec2.*;
 import com.amazonaws.services.ec2.model.*;
 
-buildscript {
-   repositories { mavenCentral() }
-   dependencies { classpath 'com.amazonaws:aws-java-sdk:1.4.4.1' }
-}
-
 def credentials = new PropertiesCredentials(
                         new File(System.properties['user.home'],
                                  '.aws/AwsCredentials.properties'))
 
-def ec2 = new AmazonEC2Client(credentials)
-if (hasProperty('region')) ec2.endpoint = "https'ec2.${region}.amazonaws.com"
 
-//KeyPair作成
-//
+def ec2 = new AmazonEC2Client(credentials)
+ec2.endpoint = "https://ec2.ap-northeast-1.amazonaws.com"
+def groupname = "devkan20130707"
+
+def isSecurityGroupAvailable(String groupname) {
+    def greq = new DescribeSecurityGroupsRequest().withGroupNames([groupname])
+    def groups = ec2.describeSecurityGroups(greq).securityGroups
+    groups.size() > 0
+}
+
+def deleteSecurityGroup(String groupname) {
+    def dreq = new DeleteSecurityGroupRequest().withGroupName(groupname)
+    ec2.deleteSecurityGroup(dreq)
+}
+
+def createSecurityGroup(String groupname) {
+    def creq = new CreateSecurityGroupRequest(groupname,"for dev startar kit")
+    def groupid = ec2.createSecurityGroup(creq).groupId
+    def rulereq = new AuthorizeSecurityGroupIngressRequest()
+            .withGroupId(groupid)
+            .withIpPermissions([
+            new IpPermission()
+                    .withIpProtocol("tcp")
+                    .withFromPort(0)
+                    .withToPort(65535)
+                    .withUserIdGroupPairs([new UserIdGroupPair().withGroupId(groupid)]),
+            new IpPermission()
+                    .withIpProtocol("tcp")
+                    .withFromPort(22)
+                    .withToPort(22)
+                    .withIpRanges(["0.0.0.0/0"]),
+            new IpPermission()
+                    .withIpProtocol("tcp")
+                    .withFromPort(80)
+                    .withToPort(80)
+                    .withIpRanges(["0.0.0.0/0"]),
+            new IpPermission()
+                    .withIpProtocol("tcp")
+                    .withFromPort(8080)
+                    .withToPort(8080)
+                    .withIpRanges(["0.0.0.0/0"]),
+            new IpPermission()
+                    .withIpProtocol("tcp")
+                    .withFromPort(4848)
+                    .withToPort(4848)
+                    .withIpRanges(["0.0.0.0/0"])
+    ])
+    ec2.authorizeSecurityGroupIngress(rulereq)
+
+}
+
+def runInstances(String imageId) {
+    def req = new RunInstancesRequest()
+            .withSecurityGroups(groupname)
+            .withKeyName(keyPair)
+            .withInstanceType(InstanceType.T1Micro)
+            .withImageId(imageId)
+            .withMinCount(numberOfInstances)
+    ec2.runInstances(req).reservation.instances
+}
+
+def tagInstances(Collection<Instance> is, String name) {
+    def ids = [];
+    is.each(ids.add(it.instanceId))
+    def req = CreateTagsRequest().withResources(ids).withTags([new Tag("name",name)])
+    ec2.createTags(req)
+}
+
+task createSecurityGroup << {
+    if (isSecurityGroupAvailable(groupname)) {
+        deleteSecurityGroup(groupname)
+    }
+    createSecurityGroup(groupname)
+}
+
+task runInstancePairs(dependsOn:'createSecurityGroup') << {
+    def jenkinsInstances = runInstances(jenkinsImageId)
+    tagInstances(jenkinsInstances,"devkan20130707-jenkins")
+    def glassfishInstances = runInstances(glassfishImageId)
+    tagInstances(glassfishInstances,"devkan20130707-glassfish")
+    for (int i = 0; i < numberOfInstances; i++) {
+        def jenkinsPublicIp = jenkinsInstances[i].publicIpAddress
+        def glassfishPublicIp = glassfishInstances[i].publicIpAddress
+        def glassfishPrivateIp = glassfishInstances[i].privateIpAddress
+        println "jenkins(public:${jenkinsPublicIp}) glassfish(public: ${glassfishPublicIp} private:${glassfishPrivateIp}"
+    }
+}
+
+task terminateInstances << {
+    def req = DescribeTagsRequest().withFilters([new Filter("name",["devkan20130707-*"])])
+    def ids = []
+    ec2.describeTags(req).tags.each(
+            ids.add(it.resourceId)
+    )
+
+    def terminateReq = new TerminateInstancesRequest().withInstanceIds(ids);
+    ec2.terminateInstances(terminateReq);
+}
+
+
+
+
+
