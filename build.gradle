@@ -8,6 +8,7 @@ task wrapper(type:Wrapper) {
     gradleVersion = '1.6'
 }
 
+
 import com.amazonaws.*;
 import com.amazonaws.auth.*;
 import com.amazonaws.services.ec2.*;
@@ -18,9 +19,9 @@ def credentials = new PropertiesCredentials(
                                  '.aws/AwsCredentials.properties'))
 
 
-def ec2 = new AmazonEC2Client(credentials)
+ec2 = new AmazonEC2Client(credentials)
 ec2.endpoint = "https://ec2.ap-northeast-1.amazonaws.com"
-def groupname = "devkan20130707"
+groupname = "devkan20130707"
 
 def isSecurityGroupAvailable(String groupname) {
     def greq = new DescribeSecurityGroupsRequest().withGroupNames([groupname])
@@ -69,50 +70,55 @@ def createSecurityGroup(String groupname) {
 
 }
 
-def runInstances(String imageId) {
+def runInstances(String imageId,int count) {
     def req = new RunInstancesRequest()
             .withSecurityGroups(groupname)
             .withKeyName(keyPair)
             .withInstanceType(InstanceType.T1Micro)
             .withImageId(imageId)
-            .withMinCount(numberOfInstances)
-    ec2.runInstances(req).reservation.instances
+            .withMinCount(count)
+            .withMaxCount(count)
+    return ec2.runInstances(req).reservation.instances
 }
 
 def tagInstances(Collection<Instance> is, String name) {
     def ids = [];
-    is.each(ids.add(it.instanceId))
-    def req = CreateTagsRequest().withResources(ids).withTags([new Tag("name",name)])
+    is.each({ids.add(it.instanceId)})
+    def req = new CreateTagsRequest().withResources(ids).withTags([new Tag("name",name)])
     ec2.createTags(req)
 }
 
 task createSecurityGroup << {
     if (isSecurityGroupAvailable(groupname)) {
-        deleteSecurityGroup(groupname)
+        return
+        //deleteSecurityGroup(groupname)
     }
     createSecurityGroup(groupname)
 }
 
 task runInstancePairs(dependsOn:'createSecurityGroup') << {
-    def jenkinsInstances = runInstances(jenkinsImageId)
+    int minCount = Integer.valueOf(numberOfInstances);
+    def jenkinsInstances = runInstances(jenkinsImageId, minCount)
     tagInstances(jenkinsInstances,"devkan20130707-jenkins")
-    def glassfishInstances = runInstances(glassfishImageId)
+    def glassfishInstances = runInstances(glassfishImageId, minCount)
     tagInstances(glassfishInstances,"devkan20130707-glassfish")
-    for (int i = 0; i < numberOfInstances; i++) {
-        def jenkinsPublicIp = jenkinsInstances[i].publicIpAddress
-        def glassfishPublicIp = glassfishInstances[i].publicIpAddress
-        def glassfishPrivateIp = glassfishInstances[i].privateIpAddress
-        println "jenkins(public:${jenkinsPublicIp}) glassfish(public: ${glassfishPublicIp} private:${glassfishPrivateIp}"
+    for (int i = 0; i < minCount; i++) {
+        def jenkinsPublicIp = jenkinsInstances[i].publicDnsName
+        def glassfishPublicIp = glassfishInstances[i].publicDnsName
+        def glassfishPrivateIp = glassfishInstances[i].privateDnsName
+        println "jenkins(public:${jenkinsPublicIp}) glassfish(public:${glassfishPublicIp} private:${glassfishPrivateIp})"
     }
 }
 
 task terminateInstances << {
-    def req = DescribeTagsRequest().withFilters([new Filter("name",["devkan20130707-*"])])
+    def req = new DescribeTagsRequest().withFilters([new Filter("value",["devkan20130707-*"])])
     def ids = []
-    ec2.describeTags(req).tags.each(
-            ids.add(it.resourceId)
-    )
-
+    ec2.describeTags(req).tags.each({
+        ids.add(it.resourceId)
+    })
+    if (ids.size() ==0 ) {
+        return;
+    }
     def terminateReq = new TerminateInstancesRequest().withInstanceIds(ids);
     ec2.terminateInstances(terminateReq);
 }
