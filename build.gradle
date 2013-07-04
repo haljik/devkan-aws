@@ -114,30 +114,33 @@ class DevStarterKitEc2Client {
         def ids = getInstanceIds(this.name + '-*')
         def req = new DescribeInstancesRequest().withInstanceIds(ids)
         def running = []
-        def sleepcount = 0
+        def wait = 0
         while(running.size() < ids.size()) {
+            def sleepcount = 0
             while (sleepcount <= 10) {
-                if (sleepmillis < 500 * sleepcount) {
+                if (sleepmillis < wait) {
                     println 'timeout'
                     return
                 }
-                sleep(500)
+                sleep(1000)
+                wait += 1000
                 println '*'
                 sleepcount++
             }
 
             println ' checking '
-            def instances = ec2.describeInstances(req)
-                    .reservations
-                    .instances
-                    .flatten()
-            instances.each {
-                if (it.state.name.equals('running')) {
-                    if (!running.contains(it)) {
-                        running.add it
+
+            ec2.describeInstances(req)
+                .reservations
+                .instances
+                .flatten()
+                .each { instance ->
+                    if (instance.state.name.equals('running')) {
+                        if (!running.contains(instance)) {
+                            running.add instance
+                        }
                     }
                 }
-            }
         }
         return running
     }
@@ -182,7 +185,9 @@ class DevStarterKitEc2Client {
 def final GROUPNAME = "devkan20130707"
 def final JENKINS_IMAGE_ID = "ami-6dd9566c"
 def final GLASSFISH_IMAGE_ID = "ami-87d75886"
-def final config = new ConfigSlurper().parse(new File(System.properties['user.home'] + '/.aws/devstartarkit.properties').toURL())
+def final config = new ConfigSlurper()
+                    .parse(new File(System.properties['user.home'] + '/.aws/devstartarkit.properties')
+                            .toURI().toURL())
 def final int COUNT = Integer.valueOf(config.number.of.sets)
 def final String KEYPAIR = config.keypair.name
 println COUNT
