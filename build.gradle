@@ -148,15 +148,12 @@ class DevStarterKitEc2Client {
     public void printHostInformation(Collection<Instance> running) {
         def jenkins = filterJenkinsInstance(running)
         def glassfish = filterGlassfishInstance(running)
-        println()
+        println "jenkins_publicip\tglassfish_publicip\tglassfish_privateIp"
         for (int i = 0; i < jenkins.size(); i++) {
-            def jenkins_instanceid = jenkins[i].instanceId
-            def jenkins_publicip = jenkins[i].publicIpAddress
-            def glassfish_instanceid = jenkins[i].instanceId
-            def glassfish_publicip = glassfish[i].publicIpAddress
+            def jenkins_publicip = jenkins[i].publicDnsName
+            def glassfish_publicip = glassfish[i].publicDnsName
             def glassfish_privateIp = glassfish[i].privateIpAddress
-            println "SEQ:${i} jenkins:{ publicIp:${jenkins_publicip}, id:${jenkins_instanceid} }, " +
-                    "glassfish:{publicIp:${glassfish_publicip}, privateIp:${glassfish_privateIp}, id:${glassfish_instanceid} }"
+            println "${jenkins_publicip}\t${glassfish_publicip}\t${glassfish_privateIp}"
         }
     }
 
@@ -184,9 +181,9 @@ class DevStarterKitEc2Client {
 
 def final GROUPNAME = "devkan20130707"
 def final JENKINS_IMAGE_ID = "ami-6dd9566c"
-def final GLASSFISH_IMAGE_ID = "ami-87d75886"
+def final GLASSFISH_IMAGE_ID = "ami-a922b7a8"
 def final config = new ConfigSlurper()
-                    .parse(new File(System.properties['user.home'] + '/.aws/devstartarkit.properties')
+                    .parse(new File(System.properties['user.home'] + '/.aws/devstarterkit.properties')
                             .toURI().toURL())
 def final int COUNT = Integer.valueOf(config.number.of.sets)
 def final String KEYPAIR = config.keypair.name
